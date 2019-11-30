@@ -1,0 +1,5 @@
+﻿  SimperRouter.cpp
+  SimperRouterDlg.cpp
+  正在生成代码...
+D:\leliy\github_project\course-review\undergraduate\junior_first\computer networks techology\大作业\路由器\SimperRouter-master\SimperRouter\SimperRouterDlg.cpp(618,15): warning C4244: “=”: 从“wchar_t”转换到“char”，可能丢失数据
+  SimperRouter.vcxproj -> D:\leliy\github_project\course-review\undergraduate\junior_first\computer networks techology\大作业\路由器\SimperRouter-master\Debug\SimperRouter.exe
