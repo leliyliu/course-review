@@ -1,0 +1,49 @@
+#include<stdio.h>  
+#include<stdlib.h>  
+#include<conio.h>  
+#include<bios.h>  
+#include<ctype.h>  
+#include<process.h>  
+//根据查看配置信息修改下列符号值***********************************  
+#define IOY0    0x3038  
+	//*****************************************************************  
+#define MY8255_A    IOY0+0x00*2  
+#define MY8255_B    IOY0+0x01*2  
+#define MY8255_C    IOY0+0x02*2  
+#define MY8255_MODE IOY0+0x03*2  
+void main()
+{
+    char output[4] = {0x07,0x0b,0x0d,0x0e};
+    int i,num;
+    char input;
+    outp(MY8255_MODE,0x82);
+    while(true)
+    {
+        for(i=0;i<4;i++)
+        {
+            outp(MY8255_A,output[i]);
+            input = inp(MY8255_B);
+            if(input&0x0f != 0x0f)
+            {
+                switch(input)
+                {
+                    case 0x07:
+                        num = i*4;
+                        break;
+                    case 0x0b:
+                        num = i*4+1;
+                      	break;
+                    case 0x0d:
+                        num = i*4+2;
+                        break;
+                    case 0x0e:
+                        num = i*4+3;
+                        break;
+                    default:
+                        break;
+                }
+                printf("Num:%d",num);
+            }
+        }
+    }
+}

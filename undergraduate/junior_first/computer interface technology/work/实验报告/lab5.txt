@@ -1,0 +1,86 @@
+#include<stdio.h>  
+#include<stdlib.h>  
+#include<conio.h>  
+#include<bios.h>  
+#include<ctype.h>  
+#include<process.h>  
+//根据查看配置信息修改下列符号值***********************************  
+#define IOY0    0x3038  
+	//*****************************************************************  
+#define MY8255_A    IOY0+0x00*2  
+#define MY8255_B    IOY0+0x01*2  
+#define MY8255_C    IOY0+0x02*2  
+#define MY8255_MODE IOY0+0x03*2  
+
+void main()
+{
+    char choose_bit[6] = {0xFE,0xF0,0xFB,0xF7,0xEF,0xDF};
+    char nums[10] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F}
+
+	char col,row;
+	int i,j,num,times;
+	outp(MY8255_MODE,0x80);//C口作为输出
+	while(1)
+    {
+        while(1)
+        {
+            outp(MY8255_C,0x00);
+            outp(MY8255_MODE,0x89);//C口作为输入
+            col = inp(MY8255_C);
+            col = col & 0xf;
+            outp(MY8255_MODE,0x80);
+            outp(MY8255_C,col);
+            outp(MY8255_MODE,0x89)
+        	row = inp(MY8255_C);
+           	row = row & 0xf;
+            switch(col)
+            {
+                case 0x07:
+                    i = 0;
+                    break;
+                case 0x0b:
+                    i = 1;
+                    break;
+                case 0x0d:
+                    i = 2;
+                    break;
+                case 0x0e:
+                    i = 3;
+                    break;
+                default:
+                    i = 4;
+                    break;
+            }
+            switch(row)
+            {
+                case 0x07:
+                    j = 0;
+                    break;
+                case 0x0b:
+                    j = 1;
+                    break;
+                case 0x0d:
+                    j = 2;
+                    break;
+                case 0x0e:
+                    j = 3;
+                    break;
+                default:
+                    j = 4;
+                    break;
+            }
+            num = i*4 +j;
+            if(num > 9 && num != 20)
+            	return;
+            else if(num<=9)
+                break;
+        }
+
+       	for(times=0;times<10000;times++)
+        {
+            outp(MY8255_A,0xFE);
+            outp(MY8255_B,nums[num]);
+        }
+        pirntf("Num %d\n",num);
+    }
+};
