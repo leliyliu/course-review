@@ -432,11 +432,73 @@ outportb(data_port,data);
 
 **构成无条件输入端口的关键是产生三态门的控制信号，实际上它是 IO 读信号（IOR#）和地址译码信号的负与。**
 
+##### 函数退出代码
+
+```c
+void key(void)
+{
+    if(bioskey(1) != 0)
+        exit(0);
+}
+```
+
+
+
 ## 实验3 —— 可编程接口芯片8255A的使用
 
 ### 8255连接示意图
 
 ![8255](fig/1-4.png)
+
+8255A是一种可编程并行输入输出接口，并行，是指数据的各位同时传送。其只支持字节数据的并行传送。
+
+#### 8255的结构
+
+40引脚、双列直插式封装，包括数据端口、组控制电路、数据总线缓冲器、读/写控制逻辑等组成。
+
+##### 数据端口
+
+8255A有3个8位的数据端口：端口A,B,C。每一个端口都可由程序设定为输入或输出。C口可分成两个4位的端口：C高4位口和C低4位口
+
+##### A、B组控制电路
+
+A口和C高4位为A组，同理，可知B组。其都具有相应控制字。
+
+##### 数据总线缓冲器
+
+8位三态双向缓冲器，作为8255A与系统总线的接口。一般都应具有三态缓冲器，保证在芯片未被选中时和系统总线处于“脱离”状态。
+
+##### 读/写控制逻辑
+
+包括很多控制信号：
+
+![8255A](fig/lab1.png)
+
+#### 8255A工作方式
+
+##### 方式0
+
+基本输入输出方式，传送数据时不需要联络信号，A口、B口和C口均可单独设置为方式0输入口或方式0输出口
+
+##### 方式1
+
+选通输入输出方式，需要进行联络。A组，B组的A口，B口可以被设置为方式1输入口或输出口，这是C口的3根线作为联络线。
+
+##### 方式2
+
+双向传送，C口的五根线作为联络线，只有1组能用于方式2，确定为A组，当A组设置为方式2时，A口被设置为双向端口，输入和输出。
+
+![联络信号](fig/lab2.png)
+
+##### 方式选择控制字
+
+![控制字](fig/lab3.png)
+
+##### 置位/复位控制字
+
+![置位复位](fig/lab4.png)
+
+
 
 ## 实验4——4 * 4小键盘的使用
 
@@ -456,6 +518,137 @@ outportb(data_port,data);
 
 行反转法要求与之配合的行列线的数据端口能改变输入输出方式。先将行端口设置为输出口，列端口设置为输入口。通过行端口输出一个（低 4 位）全 0 的字节数据，然后读入列线值。如果此时有键按下，则必定会使某列线值为 0。接着，程序改变对两个端口的设置：使行端口变成输入口，而列端口变成输出口。接下来，将刚才读得的列值从列端口输出，从行端口读取行线的输入值。显然，闭合键所在的行线值为 0。这样，当一个键被按下时，必定可以读到一对唯一的行值和列值。
 
+#### 行扫描法代码：
+
+```c
+#include<stdio.h>  
+#include<stdlib.h>  
+#include<conio.h>  
+#include<bios.h>  
+#include<ctype.h>  
+#include<process.h>  
+//根据查看配置信息修改下列符号值***********************************  
+#define IOY0    0x3038  
+	//*****************************************************************  
+#define MY8255_A    IOY0+0x00*2  
+#define MY8255_B    IOY0+0x01*2  
+#define MY8255_C    IOY0+0x02*2  
+#define MY8255_MODE IOY0+0x03*2  
+void main()
+{
+    char output[4] = {0x07,0x0b,0x0d,0x0e};
+    int i,num;
+    char input;
+    outp(MY8255_MODE,0x82);
+    while(true)
+    {
+        for(i=0;i<4;i++)
+        {
+            outp(MY8255_A,output[i]);
+            input = inp(MY8255_B);
+            if(input&0x0f != 0x0f)
+            {
+                switch(input)
+                {
+                    case 0x07:
+                        num = i*4;
+                        break;
+                    case 0x0b:
+                        num = i*4+1;
+                      	break;
+                    case 0x0d:
+                        num = i*4+2;
+                        break;
+                    case 0x0e:
+                        num = i*4+3;
+                        break;
+                    default:
+                        break;
+                }
+                printf("Num:%d",num);
+            }
+        }
+    }
+}
+    
+```
+
+
+
+#### 行反转法代码：
+
+```c
+#include<stdio.h>  
+#include<stdlib.h>  
+#include<conio.h>  
+#include<bios.h>  
+#include<ctype.h>  
+#include<process.h>  
+//根据查看配置信息修改下列符号值***********************************  
+#define IOY0    0x3038  
+	//*****************************************************************  
+#define MY8255_A    IOY0+0x00*2  
+#define MY8255_B    IOY0+0x01*2  
+#define MY8255_C    IOY0+0x02*2  
+#define MY8255_MODE IOY0+0x03*2  
+
+void main()
+{
+    int i,j,num;
+    char col,row;
+    outp(MY8255_MODE,0x82);
+    while(true)
+    {
+        outp(MY8255_A,0x00);
+        col = inp(MY8255_B);
+        col = col & 0x0f;
+        outp(MY8255_MODE,0x90);
+        outp(MY8255_B,col);
+        row = inp(MY8255_A);
+        switch(col)
+        {
+            case 0x07:
+                i = 0;
+                break;
+            case 0x0b:
+                i = 1;
+                break;
+            case 0x0d:
+                i = 2;
+                break;
+            case 0x0e:
+                i = 3;
+                break;
+            default:
+                i = 4;
+                break;
+        }
+		switch(row)
+        {
+            case 0x07:
+                j = 0;
+                break;
+            case 0x0b:
+                j = 1;
+                break;
+            case 0x0d:
+                j = 2;
+                break;
+            case 0x0e:
+                j = 3;
+                break;
+            default:
+                j = 4;
+                break;
+        }
+        num = i*4 +j;
+        printf("Num: %d",num);
+    }
+}
+```
+
+
+
 ## 实验5 —— 七段数码管的使用
 
 一个七段数码管主要包括：
@@ -463,6 +656,99 @@ outportb(data_port,data);
 ![七段数码管](fig/1-6.png)
 
 一个七段数码管能够显示一位十进制数码，通常的显示一般需要若干位。一般包括了段选和位选两种情况。
+
+具体实验三代码如下：
+
+```c
+#include<stdio.h>  
+#include<stdlib.h>  
+#include<conio.h>  
+#include<bios.h>  
+#include<ctype.h>  
+#include<process.h>  
+//根据查看配置信息修改下列符号值***********************************  
+#define IOY0    0x3038  
+	//*****************************************************************  
+#define MY8255_A    IOY0+0x00*2  
+#define MY8255_B    IOY0+0x01*2  
+#define MY8255_C    IOY0+0x02*2  
+#define MY8255_MODE IOY0+0x03*2  
+
+void main()
+{
+    char choose_bit[6] = {0xFE,0xF0,0xFB,0xF7,0xEF,0xDF};
+    char nums[10] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F}
+
+	char col,row;
+	int i,j,num,times;
+	outp(MY8255_MODE,0x80);//C口作为输出
+	while(1)
+    {
+        while(1)
+        {
+            outp(MY8255_C,0x00);
+            outp(MY8255_MODE,0x89);//C口作为输入
+            col = inp(MY8255_C);
+            col = col & 0xf;
+            outp(MY8255_MODE,0x80);
+            outp(MY8255_C,col);
+            outp(MY8255_MODE,0x89)
+        	row = inp(MY8255_C);
+           	row = row & 0xf;
+            switch(col)
+            {
+                case 0x07:
+                    i = 0;
+                    break;
+                case 0x0b:
+                    i = 1;
+                    break;
+                case 0x0d:
+                    i = 2;
+                    break;
+                case 0x0e:
+                    i = 3;
+                    break;
+                default:
+                    i = 4;
+                    break;
+            }
+            switch(row)
+            {
+                case 0x07:
+                    j = 0;
+                    break;
+                case 0x0b:
+                    j = 1;
+                    break;
+                case 0x0d:
+                    j = 2;
+                    break;
+                case 0x0e:
+                    j = 3;
+                    break;
+                default:
+                    j = 4;
+                    break;
+            }
+            num = i*4 +j;
+            if(num > 9 && num != 20)
+            	return;
+            else if(num<=9)
+                break;
+        }
+
+       	for(times=0;times<10000;times++)
+        {
+            outp(MY8255_A,0xFE);
+            outp(MY8255_B,nums[num]);
+        }
+        pirntf("Num %d\n",num);
+    }
+};
+```
+
+
 
 ## 实验6——D/A转换器的使用
 
