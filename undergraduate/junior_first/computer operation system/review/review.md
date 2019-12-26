@@ -129,8 +129,8 @@
 ​    
 ​    硬件处理
 ​    
-    依据内部或者外部事件设置中断标志，然后依据中断向量调用相应的中断服务例程。
-    
+​    依据内部或者外部事件设置中断标志，然后依据中断向量调用相应的中断服务例程。
+​    
     软件处理
     
     首先进行现场保存（由编译器完成），然后进行中断服务处理（中断服务例程完成），接着清除中断标记（中断服务例程），最后进行现场恢复（编译器）。
@@ -343,6 +343,1370 @@ NTFS（New Technology File System）是运行在 Windows NT 操纵系统环境�
 
 以及[NTFS](https://zh.wikipedia.org/zh-cn/NTFS)
 
+### 9.对给出的boot源码进行分析
+
+#### boot1.0
+
+```assembly
+org	0x7c00	
+
+BaseOfStack	equ	0x7c00  ;起始地址0x7c00
+
+Label_Start:
+
+	mov	ax,	cs
+	mov	ds,	ax
+	mov	es,	ax
+	mov	ss,	ax
+	mov	sp,	BaseOfStack
+;加载段，cs ds es ss 
+;sp 堆栈指针寄存器
+
+
+;=======	clear screen
+
+	mov	ax,	0600h
+	mov	bx,	0700h
+	mov	cx,	0
+	mov	dx,	0184fh
+	int	10h
+
+;=======	set focus
+
+	mov	ax,	0200h
+	mov	bx,	0000h
+	mov	dx,	0000h
+	int	10h
+
+;=======	display on screen : Start Booting......
+
+	mov	ax,	1301h
+	mov	bx,	000fh
+	mov	dx,	0000h
+	mov	cx,	10
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartBootMessage
+	int	10h
+
+;=======	reset floppy
+
+	xor	ah,	ah
+	xor	dl,	dl
+	int	13h
+
+	jmp	$
+
+StartBootMessage:	db	"NKU Boot"
+
+;=======	fill zero until whole sector
+
+	times	510 - ($ - $$)	db	0
+	dw	0xaa55
+
+
+```
+
+
+
+#### boot2.0
+
+```assembly
+org	0x7c00	
+
+BaseOfStack	equ	0x7c00
+
+BaseOfLoader	equ	0x1000
+OffsetOfLoader	equ	0x00
+
+RootDirSectors	equ	14
+SectorNumOfRootDirStart	equ	19
+SectorNumOfFAT1Start	equ	1
+SectorBalance	equ	17	
+
+	jmp	short Label_Start
+	nop
+	BS_OEMName	db	'MINEboot'
+	BPB_BytesPerSec	dw	512
+	BPB_SecPerClus	db	1
+	BPB_RsvdSecCnt	dw	1
+	BPB_NumFATs	db	2
+	BPB_RootEntCnt	dw	224
+	BPB_TotSec16	dw	2880
+	BPB_Media	db	0xf0
+	BPB_FATSz16	dw	9
+	BPB_SecPerTrk	dw	18
+	BPB_NumHeads	dw	2
+	BPB_HiddSec	dd	0
+	BPB_TotSec32	dd	0
+	BS_DrvNum	db	0
+	BS_Reserved1	db	0
+	BS_BootSig	db	0x29
+	BS_VolID	dd	0
+	BS_VolLab	db	'boot loader'
+	BS_FileSysType	db	'FAT12   '
+
+Label_Start:
+
+	mov	ax,	cs
+	mov	ds,	ax
+	mov	es,	ax
+	mov	ss,	ax
+	mov	sp,	BaseOfStack
+
+;=======	clear screen
+
+	mov	ax,	0600h
+	mov	bx,	0700h
+	mov	cx,	0
+	mov	dx,	0184fh
+	int	10h
+
+;=======	set focus
+
+	mov	ax,	0200h
+	mov	bx,	0000h
+	mov	dx,	0000h
+	int	10h
+
+;=======	display on screen : Start Booting......
+
+	mov	ax,	1301h
+	mov	bx,	000fh
+	mov	dx,	0000h
+	mov	cx,	10
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartBootMessage
+	int	10h
+
+;=======	reset floppy
+
+	xor	ah,	ah
+	xor	dl,	dl
+	int	13h
+
+;=======	search loader.bin
+	mov	word	[SectorNo],	SectorNumOfRootDirStart
+
+Lable_Search_In_Root_Dir_Begin:
+
+	cmp	word	[RootDirSizeForLoop],	0
+	jz	Label_No_LoaderBin
+	dec	word	[RootDirSizeForLoop]	
+	mov	ax,	00h
+	mov	es,	ax
+	mov	bx,	8000h
+	mov	ax,	[SectorNo]
+	mov	cl,	1
+	call	Func_ReadOneSector
+	mov	si,	LoaderFileName
+	mov	di,	8000h
+	cld
+	mov	dx,	10h
+	
+Label_Search_For_LoaderBin:
+
+	cmp	dx,	0
+	jz	Label_Goto_Next_Sector_In_Root_Dir
+	dec	dx
+	mov	cx,	11
+
+Label_Cmp_FileName:
+
+	cmp	cx,	0
+	jz	Label_FileName_Found
+	dec	cx
+	lodsb	
+	cmp	al,	byte	[es:di]
+	jz	Label_Go_On
+	jmp	Label_Different
+
+Label_Go_On:
+	
+	inc	di
+	jmp	Label_Cmp_FileName
+
+Label_Different:
+
+	and	di,	0ffe0h
+	add	di,	20h
+	mov	si,	LoaderFileName
+	jmp	Label_Search_For_LoaderBin
+
+Label_Goto_Next_Sector_In_Root_Dir:
+	
+	add	word	[SectorNo],	1
+	jmp	Lable_Search_In_Root_Dir_Begin
+	
+;=======	display on screen : ERROR:No LOADER Found
+
+Label_No_LoaderBin:
+
+	mov	ax,	1301h
+	mov	bx,	008ch
+	mov	dx,	0100h
+	mov	cx,	21
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	NoLoaderMessage
+	int	10h
+	jmp	$
+
+;=======	found loader.bin name in root director struct
+
+Label_FileName_Found:
+
+	mov	ax,	RootDirSectors
+	and	di,	0ffe0h
+	add	di,	01ah
+	mov	cx,	word	[es:di]
+	push	cx
+	add	cx,	ax
+	add	cx,	SectorBalance
+	mov	ax,	BaseOfLoader
+	mov	es,	ax
+	mov	bx,	OffsetOfLoader
+	mov	ax,	cx
+
+Label_Go_On_Loading_File:
+	push	ax
+	push	bx
+	mov	ah,	0eh
+	mov	al,	'.'
+	mov	bl,	0fh
+	int	10h
+	pop	bx
+	pop	ax
+
+	mov	cl,	1
+	call	Func_ReadOneSector
+	pop	ax
+	call	Func_GetFATEntry
+	cmp	ax,	0fffh
+	jz	Label_File_Loaded
+	push	ax
+	mov	dx,	RootDirSectors
+	add	ax,	dx
+	add	ax,	SectorBalance
+	add	bx,	[BPB_BytesPerSec]
+	jmp	Label_Go_On_Loading_File
+
+Label_File_Loaded:
+	
+	jmp	BaseOfLoader:OffsetOfLoader
+
+;=======	read one sector from floppy
+
+Func_ReadOneSector:
+	
+	push	bp
+	mov	bp,	sp
+	sub	esp,	2
+	mov	byte	[bp - 2],	cl
+	push	bx
+	mov	bl,	[BPB_SecPerTrk]
+	div	bl
+	inc	ah
+	mov	cl,	ah
+	mov	dh,	al
+	shr	al,	1
+	mov	ch,	al
+	and	dh,	1
+	pop	bx
+	mov	dl,	[BS_DrvNum]
+Label_Go_On_Reading:
+	mov	ah,	2
+	mov	al,	byte	[bp - 2]
+	int	13h
+	jc	Label_Go_On_Reading
+	add	esp,	2
+	pop	bp
+	ret
+
+;=======	get FAT Entry
+
+Func_GetFATEntry:
+
+	push	es
+	push	bx
+	push	ax
+	mov	ax,	00
+	mov	es,	ax
+	pop	ax
+	mov	byte	[Odd],	0
+	mov	bx,	3
+	mul	bx
+	mov	bx,	2
+	div	bx
+	cmp	dx,	0
+	jz	Label_Even
+	mov	byte	[Odd],	1
+
+Label_Even:
+
+	xor	dx,	dx
+	mov	bx,	[BPB_BytesPerSec]
+	div	bx
+	push	dx
+	mov	bx,	8000h
+	add	ax,	SectorNumOfFAT1Start
+	mov	cl,	2
+	call	Func_ReadOneSector
+	
+	pop	dx
+	add	bx,	dx
+	mov	ax,	[es:bx]
+	cmp	byte	[Odd],	1
+	jnz	Label_Even_2
+	shr	ax,	4
+
+Label_Even_2:
+	and	ax,	0fffh
+	pop	bx
+	pop	es
+	ret
+
+;=======	tmp variable
+
+RootDirSizeForLoop	dw	RootDirSectors
+SectorNo		dw	0
+Odd			db	0
+
+;=======	display messages
+
+StartBootMessage:	db	"NKU Start"
+NoLoaderMessage:	db	"ERROR:No LOADER Found"
+LoaderFileName:		db	"LOADER  BIN",0
+
+;=======	fill zero until whole sector
+
+	times	510 - ($ - $$)	db	0
+	dw	0xaa55
+
+
+```
+
+#### loader
+
+```assembly
+org	10000h
+	jmp	Label_Start
+
+%include	"fat12.inc"
+
+BaseOfKernelFile	equ	0x00
+OffsetOfKernelFile	equ	0x100000
+
+BaseTmpOfKernelAddr	equ	0x00
+OffsetTmpOfKernelFile	equ	0x7E00
+
+MemoryStructBufferAddr	equ	0x7E00
+
+[SECTION gdt]
+
+LABEL_GDT:		dd	0,0
+LABEL_DESC_CODE32:	dd	0x0000FFFF,0x00CF9A00
+LABEL_DESC_DATA32:	dd	0x0000FFFF,0x00CF9200
+
+GdtLen	equ	$ - LABEL_GDT
+GdtPtr	dw	GdtLen - 1
+	dd	LABEL_GDT
+
+SelectorCode32	equ	LABEL_DESC_CODE32 - LABEL_GDT
+SelectorData32	equ	LABEL_DESC_DATA32 - LABEL_GDT
+
+[SECTION gdt64]
+
+LABEL_GDT64:		dq	0x0000000000000000
+LABEL_DESC_CODE64:	dq	0x0020980000000000
+LABEL_DESC_DATA64:	dq	0x0000920000000000
+
+GdtLen64	equ	$ - LABEL_GDT64
+GdtPtr64	dw	GdtLen64 - 1
+		dd	LABEL_GDT64
+
+SelectorCode64	equ	LABEL_DESC_CODE64 - LABEL_GDT64
+SelectorData64	equ	LABEL_DESC_DATA64 - LABEL_GDT64
+
+[SECTION .s16]
+[BITS 16]
+
+Label_Start:
+
+	mov	ax,	cs
+	mov	ds,	ax
+	mov	es,	ax
+	mov	ax,	0x00
+	mov	ss,	ax
+	mov	sp,	0x7c00
+
+;=======	display on screen : Start Loader......
+
+	mov	ax,	1301h
+	mov	bx,	000fh
+	mov	dx,	0200h		;row 2
+	mov	cx,	12
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartLoaderMessage
+	int	10h
+
+;=======	open address A20
+	push	ax
+	in	al,	92h
+	or	al,	00000010b
+	out	92h,	al
+	pop	ax
+
+	cli
+
+	db	0x66
+	lgdt	[GdtPtr]	
+
+	mov	eax,	cr0
+	or	eax,	1
+	mov	cr0,	eax
+
+	mov	ax,	SelectorData32
+	mov	fs,	ax
+	mov	eax,	cr0
+	and	al,	11111110b
+	mov	cr0,	eax
+
+	sti
+
+;=======	reset floppy
+
+	xor	ah,	ah
+	xor	dl,	dl
+	int	13h
+
+;=======	search kernel.bin
+	mov	word	[SectorNo],	SectorNumOfRootDirStart
+
+Lable_Search_In_Root_Dir_Begin:
+
+	cmp	word	[RootDirSizeForLoop],	0
+	jz	Label_No_LoaderBin
+	dec	word	[RootDirSizeForLoop]	
+	mov	ax,	00h
+	mov	es,	ax
+	mov	bx,	8000h
+	mov	ax,	[SectorNo]
+	mov	cl,	1
+	call	Func_ReadOneSector
+	mov	si,	KernelFileName
+	mov	di,	8000h
+	cld
+	mov	dx,	10h
+	
+Label_Search_For_LoaderBin:
+
+	cmp	dx,	0
+	jz	Label_Goto_Next_Sector_In_Root_Dir
+	dec	dx
+	mov	cx,	11
+
+Label_Cmp_FileName:
+
+	cmp	cx,	0
+	jz	Label_FileName_Found
+	dec	cx
+	lodsb	
+	cmp	al,	byte	[es:di]
+	jz	Label_Go_On
+	jmp	Label_Different
+
+Label_Go_On:
+	
+	inc	di
+	jmp	Label_Cmp_FileName
+
+Label_Different:
+
+	and	di,	0FFE0h
+	add	di,	20h
+	mov	si,	KernelFileName
+	jmp	Label_Search_For_LoaderBin
+
+Label_Goto_Next_Sector_In_Root_Dir:
+	
+	add	word	[SectorNo],	1
+	jmp	Lable_Search_In_Root_Dir_Begin
+	
+;=======	display on screen : ERROR:No KERNEL Found
+
+Label_No_LoaderBin:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0300h		;row 3
+	mov	cx,	21
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	NoLoaderMessage
+	int	10h
+	jmp	$
+
+;=======	found loader.bin name in root director struct
+
+Label_FileName_Found:
+	mov	ax,	RootDirSectors
+	and	di,	0FFE0h
+	add	di,	01Ah
+	mov	cx,	word	[es:di]
+	push	cx
+	add	cx,	ax
+	add	cx,	SectorBalance
+	mov	eax,	BaseTmpOfKernelAddr	;BaseOfKernelFile
+	mov	es,	eax
+	mov	bx,	OffsetTmpOfKernelFile	;OffsetOfKernelFile
+	mov	ax,	cx
+
+Label_Go_On_Loading_File:
+	push	ax
+	push	bx
+	mov	ah,	0Eh
+	mov	al,	'.'
+	mov	bl,	0Fh
+	int	10h
+	pop	bx
+	pop	ax
+
+	mov	cl,	1
+	call	Func_ReadOneSector
+	pop	ax
+
+;;;;;;;;;;;;;;;;;;;;;;;	
+	push	cx
+	push	eax
+	push	fs
+	push	edi
+	push	ds
+	push	esi
+
+	mov	cx,	200h
+	mov	ax,	BaseOfKernelFile
+	mov	fs,	ax
+	mov	edi,	dword	[OffsetOfKernelFileCount]
+
+	mov	ax,	BaseTmpOfKernelAddr
+	mov	ds,	ax
+	mov	esi,	OffsetTmpOfKernelFile
+
+Label_Mov_Kernel:	;------------------
+	
+	mov	al,	byte	[ds:esi]
+	mov	byte	[fs:edi],	al
+
+	inc	esi
+	inc	edi
+
+	loop	Label_Mov_Kernel
+
+	mov	eax,	0x1000
+	mov	ds,	eax
+
+	mov	dword	[OffsetOfKernelFileCount],	edi
+
+	pop	esi
+	pop	ds
+	pop	edi
+	pop	fs
+	pop	eax
+	pop	cx
+;;;;;;;;;;;;;;;;;;;;;;;	
+
+	call	Func_GetFATEntry
+	cmp	ax,	0FFFh
+	jz	Label_File_Loaded
+	push	ax
+	mov	dx,	RootDirSectors
+	add	ax,	dx
+	add	ax,	SectorBalance
+
+	jmp	Label_Go_On_Loading_File
+
+Label_File_Loaded:
+		
+	mov	ax, 0B800h
+	mov	gs, ax
+	mov	ah, 0Fh				; 0000: 黑底    1111: 白字
+	mov	al, 'G'
+	mov	[gs:((80 * 0 + 39) * 2)], ax	; 屏幕第 0 行, 第 39 列。
+
+KillMotor:
+	
+	push	dx
+	mov	dx,	03F2h
+	mov	al,	0	
+	out	dx,	al
+	pop	dx
+
+;=======	get memory address size type
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0400h		;row 4
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetMemStructMessage
+	int	10h
+
+	mov	ebx,	0
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	di,	MemoryStructBufferAddr	
+
+Label_Get_Mem_Struct:
+
+	mov	eax,	0x0E820
+	mov	ecx,	20
+	mov	edx,	0x534D4150
+	int	15h
+	jc	Label_Get_Mem_Fail
+	add	di,	20
+
+	cmp	ebx,	0
+	jne	Label_Get_Mem_Struct
+	jmp	Label_Get_Mem_OK
+
+Label_Get_Mem_Fail:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0500h		;row 5
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructErrMessage
+	int	10h
+	jmp	$
+
+Label_Get_Mem_OK:
+	
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0600h		;row 6
+	mov	cx,	29
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructOKMessage
+	int	10h	
+
+;=======	get SVGA information
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0800h		;row 8
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetSVGAVBEInfoMessage
+	int	10h
+
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	di,	0x8000
+	mov	ax,	4F00h
+
+	int	10h
+
+	cmp	ax,	004Fh
+
+	jz	.KO
+	
+;=======	Fail
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0900h		;row 9
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAVBEInfoErrMessage
+	int	10h
+
+	jmp	$
+
+.KO:
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0A00h		;row 10
+	mov	cx,	29
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAVBEInfoOKMessage
+	int	10h
+
+;=======	Get SVGA Mode Info
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0C00h		;row 12
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetSVGAModeInfoMessage
+	int	10h
+
+
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	si,	0x800e
+
+	mov	esi,	dword	[es:si]
+	mov	edi,	0x8200
+
+Label_SVGA_Mode_Info_Get:
+
+	mov	cx,	word	[es:esi]
+
+;=======	display SVGA mode information
+
+	push	ax
+	
+	mov	ax,	00h
+	mov	al,	ch
+	call	Label_DispAL
+
+	mov	ax,	00h
+	mov	al,	cl	
+	call	Label_DispAL
+	
+	pop	ax
+
+;=======
+	
+	cmp	cx,	0FFFFh
+	jz	Label_SVGA_Mode_Info_Finish
+
+	mov	ax,	4F01h
+	int	10h
+
+	cmp	ax,	004Fh
+
+	jnz	Label_SVGA_Mode_Info_FAIL	
+
+	add	esi,	2
+	add	edi,	0x100
+
+	jmp	Label_SVGA_Mode_Info_Get
+		
+Label_SVGA_Mode_Info_FAIL:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0D00h		;row 13
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAModeInfoErrMessage
+	int	10h
+
+Label_SET_SVGA_Mode_VESA_VBE_FAIL:
+
+	jmp	$
+
+Label_SVGA_Mode_Info_Finish:
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0E00h		;row 14
+	mov	cx,	30
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAModeInfoOKMessage
+	int	10h
+
+;=======	set the SVGA mode(VESA VBE)
+
+	mov	ax,	4F02h
+	mov	bx,	4180h	;========================mode : 0x180 or 0x143
+	int 	10h
+
+	cmp	ax,	004Fh
+	jnz	Label_SET_SVGA_Mode_VESA_VBE_FAIL
+
+;=======	init IDT GDT goto protect mode 
+
+	cli			;======close interrupt
+
+	db	0x66
+	lgdt	[GdtPtr]
+
+;	db	0x66
+;	lidt	[IDT_POINTER]
+
+	mov	eax,	cr0
+	or	eax,	1
+	mov	cr0,	eax	
+
+	jmp	dword SelectorCode32:GO_TO_TMP_Protect
+
+[SECTION .s32]
+[BITS 32]
+
+GO_TO_TMP_Protect:
+
+;=======	go to tmp long mode
+
+	mov	ax,	0x10
+	mov	ds,	ax
+	mov	es,	ax
+	mov	fs,	ax
+	mov	ss,	ax
+	mov	esp,	7E00h
+
+	call	support_long_mode
+	test	eax,	eax
+
+	jz	no_support
+
+;=======	init temporary page table 0x90000
+
+	mov	dword	[0x90000],	0x91007
+	mov	dword	[0x90800],	0x91007		
+
+	mov	dword	[0x91000],	0x92007
+
+	mov	dword	[0x92000],	0x000083
+
+	mov	dword	[0x92008],	0x200083
+
+	mov	dword	[0x92010],	0x400083
+
+	mov	dword	[0x92018],	0x600083
+
+	mov	dword	[0x92020],	0x800083
+
+	mov	dword	[0x92028],	0xa00083
+
+;=======	load GDTR
+
+	db	0x66
+	lgdt	[GdtPtr64]
+	mov	ax,	0x10
+	mov	ds,	ax
+	mov	es,	ax
+	mov	fs,	ax
+	mov	gs,	ax
+	mov	ss,	ax
+
+	mov	esp,	7E00h
+
+;=======	open PAE
+
+	mov	eax,	cr4
+	bts	eax,	5
+	mov	cr4,	eax
+
+;=======	load	cr3
+
+	mov	eax,	0x90000
+	mov	cr3,	eax
+
+;=======	enable long-mode
+
+	mov	ecx,	0C0000080h		;IA32_EFER
+	rdmsr
+
+	bts	eax,	8
+	wrmsr
+
+;=======	open PE and paging
+
+	mov	eax,	cr0
+	bts	eax,	0
+	bts	eax,	31
+	mov	cr0,	eax
+
+	jmp	SelectorCode64:OffsetOfKernelFile
+
+;=======	test support long mode or not
+
+support_long_mode:
+
+	mov	eax,	0x80000000
+	cpuid
+	cmp	eax,	0x80000001
+	setnb	al	
+	jb	support_long_mode_done
+	mov	eax,	0x80000001
+	cpuid
+	bt	edx,	29
+	setc	al
+support_long_mode_done:
+	
+	movzx	eax,	al
+	ret
+
+;=======	no support
+
+no_support:
+	jmp	$
+
+;=======	read one sector from floppy
+
+[SECTION .s16lib]
+[BITS 16]
+
+Func_ReadOneSector:
+	
+	push	bp
+	mov	bp,	sp
+	sub	esp,	2
+	mov	byte	[bp - 2],	cl
+	push	bx
+	mov	bl,	[BPB_SecPerTrk]
+	div	bl
+	inc	ah
+	mov	cl,	ah
+	mov	dh,	al
+	shr	al,	1
+	mov	ch,	al
+	and	dh,	1
+	pop	bx
+	mov	dl,	[BS_DrvNum]
+Label_Go_On_Reading:
+	mov	ah,	2
+	mov	al,	byte	[bp - 2]
+	int	13h
+	jc	Label_Go_On_Reading
+	add	esp,	2
+	pop	bp
+	ret
+
+;=======	get FAT Entry
+
+Func_GetFATEntry:
+
+	push	es
+	push	bx
+	push	ax
+	mov	ax,	00
+	mov	es,	ax
+	pop	ax
+	mov	byte	[Odd],	0
+	mov	bx,	3
+	mul	bx
+	mov	bx,	2
+	div	bx
+	cmp	dx,	0
+	jz	Label_Even
+	mov	byte	[Odd],	1
+
+Label_Even:
+
+	xor	dx,	dx
+	mov	bx,	[BPB_BytesPerSec]
+	div	bx
+	push	dx
+	mov	bx,	8000h
+	add	ax,	SectorNumOfFAT1Start
+	mov	cl,	2
+	call	Func_ReadOneSector
+	
+	pop	dx
+	add	bx,	dx
+	mov	ax,	[es:bx]
+	cmp	byte	[Odd],	1
+	jnz	Label_Even_2
+	shr	ax,	4
+
+Label_Even_2:
+	and	ax,	0FFFh
+	pop	bx
+	pop	es
+	ret
+
+;=======	display num in al
+
+Label_DispAL:
+
+	push	ecx
+	push	edx
+	push	edi
+	
+	mov	edi,	[DisplayPosition]
+	mov	ah,	0Fh
+	mov	dl,	al
+	shr	al,	4
+	mov	ecx,	2
+.begin:
+
+	and	al,	0Fh
+	cmp	al,	9
+	ja	.1
+	add	al,	'0'
+	jmp	.2
+.1:
+
+	sub	al,	0Ah
+	add	al,	'A'
+.2:
+
+	mov	[gs:edi],	ax
+	add	edi,	2
+	
+	mov	al,	dl
+	loop	.begin
+
+	mov	[DisplayPosition],	edi
+
+	pop	edi
+	pop	edx
+	pop	ecx
+	
+	ret
+
+
+;=======	tmp IDT
+
+IDT:
+	times	0x50	dq	0
+IDT_END:
+
+IDT_POINTER:
+		dw	IDT_END - IDT - 1
+		dd	IDT
+
+;=======	tmp variable
+
+RootDirSizeForLoop	dw	RootDirSectors
+SectorNo		dw	0
+Odd			db	0
+OffsetOfKernelFileCount	dd	OffsetOfKernelFile
+
+DisplayPosition		dd	0
+
+;=======	display messages
+
+StartLoaderMessage:	db	"Start Loader"
+NoLoaderMessage:	db	"ERROR:No KERNEL Found"
+KernelFileName:		db	"KERNEL  BIN",0
+StartGetMemStructMessage:	db	"Start Get Memory Struct."
+GetMemStructErrMessage:	db	"Get Memory Struct ERROR"
+GetMemStructOKMessage:	db	"Get Memory Struct SUCCESSFUL!"
+
+StartGetSVGAVBEInfoMessage:	db	"Start Get SVGA VBE Info"
+GetSVGAVBEInfoErrMessage:	db	"Get SVGA VBE Info ERROR"
+GetSVGAVBEInfoOKMessage:	db	"Get SVGA VBE Info SUCCESSFUL!"
+
+StartGetSVGAModeInfoMessage:	db	"Start Get SVGA Mode Info"
+GetSVGAModeInfoErrMessage:	db	"Get SVGA Mode Info ERROR"
+GetSVGAModeInfoOKMessage:	db	"Get SVGA Mode Info SUCCESSFUL!"
+
+```
+
+### 10.一个进程的内存布局
+
+一般而言，对于一个进程的典型布局为：
+
+![布局](fig/re1-7.jpg)
+
+在用户空间里，也有许多地址区间有特权的地位，一般来讲，应用程序使用的内存空间里有如下“默认”的区域。
+
+> **栈：** 栈用于维护函数调用的上下文，离开了栈，函数调用就无法实现，栈通常在用户空间的最高地址处分配，通常有数兆字节的大小。
+>
+> **堆：** 堆是用来容纳应用程序动态分配的内存区域，当程序使用 malloc 或者 new 分配内存的时候，得到的内存会来自堆里。堆通常存在栈的下方（低地址方向），在某些时候，堆也可能没有固定统一的存储区域。堆一般比栈大很多，可以有几十至数百兆字节的容量。
+>
+> **可执行文件映像：** 存储着可执行文件在内存里的映像，由装载器在装载时将可执行文件的内存读取或映射到这里。
+>
+> **保留区：** 保留区并不是一个单一的内存区域，而是对内存中受到保护而禁止访问的内存区域的总称：例如大多数操作系统中，极小的地址通常都是不允许访问的，如 NULL，C 语言将无效指针赋值为 0 也是这个考虑。
+>
+> **动态链接库映射区：** 这个区域用于映射装载的动态链接库。在 Linux 下，如果可执行文件依赖其它共享库，那么系统就会为它在从 0x40000000 开始的地址分配相应的空间，并将共享库载入该空间。
+> 剩下的还有以下几部份组成：
+> （1）代码段
+> （2）初始化数据段（数据段）
+> （3）未初始化数据段（BSS 段）
+
+#### 代码段
+
+代码段中存放可执行的指令，在内存中，为了保证不会因为堆栈溢出被覆盖，将其放在了堆栈段下面（从上图可以看出）。通常来讲代码段是共享的，这样多次反复执行的指令只需要在内存中驻留一个副本即可，比如 C 编译器，文本编辑器等。代码段一般是只读的，程序执行时不能随意更改指令，也是为了进行隔离保护。
+
+#### 初始化数据段
+
+初始化数据段有时就称之为数据段。数据段是一个程序虚拟地址空间的一部分，包括一全局变量和静态变量，这些变量在编程时就已经被初始化。数据段是可以修改的，不然程序运行时变量就无法改变了，这一点和代码段不同。
+
+数据段可以细分为初始化只读区和初始化读写区。这一点和编程中的一些特殊变量吻合。比如全局变量 int global  n = 1就被放在了初始化读写区，因为 global 是可以修改的。而 const int m = 2  就会被放在只读区，很明显，m 是不能修改的。
+
+#### 未初始化数据段
+
+未初始化数据段有时称之为 BSS 段，BSS 是英文 Block Started by Symbol 的简称，BSS  段属于静态内存分配。存放在这里的数据都由内核初始化为 0。未初始化数据段从数据段的末尾开始，存放有全部的全局变量和静态变量并被，默认初始化为  0，或者代码中没有显式初始化。比如 static int i; 或者全局 int j; 都会被放到BSS段。
+
+#### 栈
+
+ 栈 (stack) 是现代计算机程序里最为重要的概念之一，几乎每一个程序都使用了栈，没有栈就没有函数，没有局部变量，也就没有我们如今能够看见的所有的计算机语言。在解释为什么栈会如此重要之前，让我们来先了解一下传统的栈的定义：
+
+ 在经典的计算机科学中，栈被定义为一个特殊的容器，用户可以将数据压入栈中(入栈,push，也可以将已经压入栈中的数据弹出(出栈,  pop)，但栈这个容器必须遵守一条规则：先入栈的数据后出栈(First In Last Out,  FIFO)，多多少少像叠成一叠的书：先叠上去的书在最下面：因此要最后才能取出。
+
+ 在计算机系统中，栈则是一个具有以上属性的动态内存区域。程序可以将数据压入栈中,也可以将数据从栈顶弹出。压栈操作使得栈增大,而弹出操作使栈减小。
+
+ 在经典的操作系统里，栈总是向下增长的。
+
+栈在程序运行中具有举足轻重的地位。最重要的，栈保存了一个函数调用所需要的维护信息，这常常被称为堆栈帧(Stack Frame)或活动记录(Activate Record)，堆栈帧一般包括如下几方面内容：
+
+> **1、函数的返回地址和参数。**
+> **2、临时变量:包括函数的非静态局部变量以及编译器自动生成的其他临时变量。**
+> **3、保存的上下文:包括在函数调用前后需要保持不变的寄存器。**
+
+#### 堆
+
+相对于栈，堆这片内存面临着一个稍微复杂的行为模式：在任意时刻，程序可能发出请求，要么申请一段内存，要么释放一段已经申请过的内存，而且申请的大小从几个字节到数 GB 都是有可能的，我们不能假设程序会一次申请多少堆空间，因此，堆的管理显得较为复杂。
+
+##### 为什么需要堆
+
+> 光有栈，对于面向过程的程序设计还远远不够，因为栈上的数据在函数返回的时候就会被释放掉，所以无法将数据传递至函数外部。而全局变量没有办法动态地产生，只能在编译的时候定义，有很多情况下缺乏表现力，在这种情况下，堆（Heap）是一种唯一的选择。
+
+**一个申请堆的例子**
+
+```c
+int main()
+{
+    char *p = (char*) malloc(233);
+    free(p);
+    return 0;
+}
+```
+
+在第 3 行用 malloc 申请了 233 个字节的空间之后，程序可以自由地使用这 233个字节，直到程序用free函数释放它。
+
+###### malloc的实现
+
+有一种做法是，把进程的内存管理交给操作系统内核去做，既然内核管理着进程的地址空间，那么如果它提供一个系统调用，可以让程序使用这个系统调用申请内存，不就可以了吗？
+
+当然这是一种理论上可行的做法，但实际上这样做的性能比较差，原因在于每次程序申请或者释放堆空间都需要进行系统调用。
+
+我们知道系统调用的性能开销是很大的，当程序对堆的操作比较频繁时，这样做的结果是会严重影响程序的性能的。
+
+**比较好的做法就是：程序向操作系统申请一块适当大小的堆空间，然后由程序自己管理这块空间，而具体来讲，管理着堆空间分配的往往是程序的运行库。**
+
+#### Linux	进程堆管理
+
+由第一节可知，进程的地址空间中，除了可执行文件，共享库和栈之外，剩余的未分配的空间都可以用来作为堆空间。
+
+Linux 系统下，提供两种堆空间分配方式，两个系统调用：brk() 系统调用 和 mmap() 系统调用
+
+这两种方式分配的都是虚拟内存，没有分配物理内存。在第一次访问已分配的虚拟地址空间的时候，发生缺页中断，操作系统负责分配物理内存，然后建立虚拟内存和物理内存之间的映射关系。
+
+在标准 C 库中，提供了malloc/free函数分配释放内存，这两个函数底层是由 brk，mmap，munmap 这些系统调用实现的。
+
+##### **brk() 系统调用**
+
+> C 语言形式声明：int brk() {void* end_data_segment;}
+> brk() 的作用实际上就是设置进程数据段的结束地址，即它可以扩大或者缩小数据段（Linux 下数据段和 BBS 合并在一起统称数据段）。
+> 如果我们将数据段的结束地址向高地址移动，那么扩大的那部分空间就可以被我们使用，把这块空间拿过来使用作为堆空间是最常见的做法。
+
+##### **mmap() 系统调用**
+
+> 和 Windows 系统下的 VirtualAlloc 很相似，它的作用就是向操作系统申请一段虚拟地址空间，（堆和栈中间，称为文件映射区域的地方）这块虚拟地址空间可以映射到某个文件。
+> glibc 的 malloc 函数是这样处理用户的空间请求的：对于小于 128KB  的请求来说，它会在现有的堆空间里面，按照堆分配算法为它分配一块空间并返回；对于大于128KB 的请求来说，它会使用 mmap()  函数为它分配一块匿名空间，然后在这个匿名空间中为用户分配空间。
+
+声明如下：
+
+```cpp
+void* mmap{
+    void* start;
+    size_t length;
+    int prot;
+    int flags;
+    int fd;
+    off_t offset;
+}
+```
+
+> mmap 前两个参数分别用于指定需要申请的空间的起始地址和长度，如果起始地址设置 0，那么 Linux 系统会自动挑选合适的起始地址。
+> prot/flags 参数：用于设置申请的空间的权限（可读，可写，可执行）以及映射类型（文件映射，匿名空间等）。
+> 最后两个参数用于文件映射时指定的文件描述符和文件偏移的。
+
+
+
+了解了 Linux 系统对于堆的管理之后，可以再来详细这么一个问题，那就是 malloc 到底一次能够申请的最大空间是多少？
+
+为了回答这个问题，就不得不再回头仔细研究一下之前的图一。我们可以看到在有共享库的情况下，留给堆可以用的空间还有两处。第一处就是从 BSS 段结束到 0x40 000 000 即大约 1GB 不到的空间；
+
+第二处是从共享库到栈的这块空间，大约是 2GB 不到。这两块空间大小都取决于栈、共享库的大小和数量。
+
+于是可以估算到 malloc 最大的申请空间大约是 2GB 不到。（Linux 内核 2.4 版本）。
+
+还有其它诸多因素会影响 malloc 的最大空间大小，比如系统的资源限制（ulimit），物理内存和交换空间的总和等。mmap 申请匿名空间时，系统会为它在内存或交换空间中预留地址，但是申请的空间大小不能超过空闲内存+空闲交换空间的总和。
+
+
+
+### 堆分配算法
+
+> 1、空闲链表法（即调用 malloc 分配）：
+> 就是把堆中各个空闲的块按照链表的方式连接起来，当用户请求一块空间的时候，可以遍历整个列表，直到找到合适大小的块并且将它拆分；当用户释放空间的时候将它合并到空闲链表中。
+> 空闲链表是这样一种结构，在堆里的每一个空闲空间的开头(或结尾)有一个头 (header)，头结构里记录了上一个 (prev) 和下一个 (next) 空闲块的地址，也就是说，所有的空闲块形成了一个链表。如图所示。
+
+![链表](fig/re1-8.jpg)
+
+
+
+具体实现方案：
+
+> 1）malloc 函数的实质是它有一个将可用的内存块连接为一个长长的列表的所谓空闲链表。
+>
+> 2）调用  malloc（）函数时，它沿着连接表寻找一个大到足以满足用户请求所需要的内存块。然后，将该内存块一分为二（一块的大小与用户申请的大小相等，另一块的大小就是剩下来的字节）。接下来，将分配给用户的那块内存存储区域传给用户，并将剩下的那块（如果有的话）返回到连接表上。
+>
+> 3）调用 free 函数时，它将用户释放的内存块连接到空闲链表上。
+>
+> 4）到最后，空闲链会被切成很多的小内存片段，如果这时用户申请一个大的内存片段， 那么空闲链表上可能没有可以满足用户要求的片段了。于是，malloc() 函数请求延时，并开始在空闲链表上检查各内存片段，对它们进行内存整理，将相邻的小空闲块合并成较大的内存块。
+
+2、位图法
+
+> 针对空闲链表的弊端，另一种分配方式显得更加稳健。这种方式称为位围(Bitmap)，其核心思想是将整个堆划分为大量的块(block)，每个块的大小相同。
+>
+> 当用户请求内存的时候，总是分配整数个块的空间给用户，第一个块我们称为已分配区域的头(Head)，其余的称为己分配区域的主体(Body)，而我们可以使用一个整数数组来记录块的使用情况，由于每个块只有头/主体/空闲三种状态，因此仅仅需要两位即可表示一个块，因此称为位图。
+
+3、对象池
+
+> 还有一种方法是对象池，也是把堆空间分成了大小相等的一些块，它是认为某些场合每次分配的空间都相等，所以每次就直接返回一个块的大小，它的管理方法可以是链表也可以是位图。因为不用每次查找合适的大小的内存返回，所以效率很高。
+
+实际上很多现实应用中，堆的分配算法往往是采取多种算法复合而成的。
+
+比如对于 glibc 来说，它对于小于 64 字节的空间申请是采用类似于对象池的方法；
+
+而对于大于 512 字节的空间申请采用的是最佳适配算法；对于大于 64 字节而小于 512 字节的，它会根据情况采取上述方法中的最佳折中策略；对于大于 128KB 的申请，它会使用mmap 机制直接向操作系统申请空间。
+
+![整体布局](fig/re1-9.jpg)
+
+#### 保留区
+
+​	它并不是一个单一的内存区域，而是对地址空间中受到操作系统保护而禁止用户进程访问的地址区域的总称。大多数操作系统中，极小的地址通常都是不允许访问的，如NULL。C语言将无效指针赋值为0也是出于这种考虑，因为0地址上正常情况下不会存放有效的可访问数据。 
+
+​	在32位X86架构的Linux系统中，用户进程可执行程序一般从虚拟地址空间0x08048000开始加载。该加载地址由ELF文件头决定，可通过自定义链接器脚本覆盖链接器默认配置，进而修改加载地址。0x08048000以下的地址空间通常由C动态链接库、动态加载器ld.so和内核VDSO(内核提供的虚拟共享库)等占用。通过使用mmap系统调用，可访问0x08048000以下的地址空间。
+
+### 11.对函数进行汇编之后，表示的各个段分别是什么含义，尤其是.bss,.rodata,.data段的含义。
+
+#### .bss
+
+通常是指用来存放程序中未初始化的全局变量的一块内存区域。BSS是英文Block Started by Symbol的简称。BSS段属于静态内存分配。
+
+  该段用于存储未初始化的全局变量或者是默认初始化为0的全局变量，它不占用程序文件的大小，但是占用程序运行时的内存空间。
+
+```c
+#define DEBUG "debug"
+ 
+int space[1024][1024];
+ 
+int main()
+{
+  char *a = DEBUG;
+  return 1;
+}
+```
+
+在这里，经过编译之后，可以知道,space 是存储在bss段中的。
+
+#### .data
+
+该段用于存储初始化的全局变量，初始化为0的全局变量出于编译优化的策略还是被保存在BSS段。
+
+#### .rodata
+
+ro的意思实际上是read only 。该段也叫常量区，用于存放常量数据。
+
+### 12. .bss攻击是什么意思
+
+缓冲区溢出除了典型的[栈溢出](https://kevien.github.io/2017/08/16/linux栈溢出学习笔记/)和[堆溢出](https://kevien.github.io/2017/10/28/堆溢出利用笔记/)外，还有一种发生在bss段上的，bss属于数据段的一种，通常用来保存未初始化的全局静态变量。
+
+关于.bss攻击的一个实例，可以参考[.bss溢出攻击](https://paper.seebug.org/548/)
+
+### 13.如何理解在用户态中的进程和在内核态中执行的进程，其关系是什么？
+
+在linux系统中，每个用户进程都有两个栈，一个用户栈和一个专用的内核栈。用户堆栈驻留在进程的用户地址空间(32位x86 arch中的前3GB)，内核堆栈驻留在进程的内核地址空间(32位x86中的3GB- 4GB)。当用户进程需要执行一些特权指令(系统调用)时，它会陷入内核模式，内核代表用户进程执行它。此执行发生在进程的内核堆栈上。任务状态段用于存储进程内核堆栈的段选择器和堆栈指针。在系统调用时，用户进程将把所有调用者的保存寄存器推入进程的用户堆栈，并执行int $0x80 (0x80(十进制128)是系统调用)指令。然后硬件(而不是软件)从TSS中查找进程的内核堆栈地址，将这些值加载到%ss(堆栈段选择器)和%esp中，将旧的堆栈指针(%esp)、旧的程序计数器(%eip)、旧的堆栈段(%ss)、代码段(%cs)、EFLAGS寄存器放入进程的内核堆栈中。因此，在任何需要堆栈访问的操作之后，都将使用此堆栈(而不是用户堆栈)。执行结束后，硬件再次将保存的值从内核堆栈中弹出到各自的寄存器和用户堆栈中。对于陷阱执行，用户堆栈不能使用，因为它可能被恶意的用户进程损坏。内核堆栈使用内核代码,所以它是safe.Linux注释原文:
+
+进程上下文
+
+\-------------------------------------------
+
+过程中最重要的部分之一是执行的程序代码。此代码从可执行文件中读取并在程序的地址空间中执行。正常的程序执行发生在用户空间中。当程序执行系统调用或触发异常时，它将进入内核空间。此时，内核被称为“代表进程执行”，并且位于进程上下文中。在进程上下文中，当前宏是有效的。退出内核后，进程在用户空间中继续执行，除非在此期间高优先级的进程变得可运行，在这种情况下，将调用调度器来选择高优先级的进程。除了进程上下文之外，还有中断上下文，在中断上下文中，系统不是代表进程运行，而是执行中断处理程序。没有进程绑定到中断处理程序，因此没有进程上下文。系统调用和异常处理程序是定义良好的内核接口。进程只能通过其中一个接口在内核空间中执行——所有对内核的访问都是通过这些接口进行的。
+
+### 14.从用户态陷入到内核态的具体过程
+
+见上面
+
+### 15.如何区分不同的进程
+
+根据进程号即可
+
+### 16.linux 的 0号进程和1号进程
+
+
+
+### 17. 单核CPU下线程有意义吗？
+
+### 18. 用户级线程和内核级线程的相互对应
+
+### 19. 线程映射的操作过程和其实质含义
+
+### 20. 阻塞与非阻塞，同步与异步（调度）
+
+### 21. 优先级调度一般采用什么数据结构？
+
+### 22. .rodata , .data , .bss这三者之间有什么区别？
+
+### 23. 线程可使用的数据形式的理解？
+
+### 24. linux任务调度算法CFS
+
+### 25.理解PPT进程这一部分的内容（3），主要是理解代码
+
+### 26.静态和动态链接库的区别(并且理解malloc的作用）
+
+### 27.进程的内核态？使用物理地址还是虚拟地址
+
+### 28.段控制寄存器保存在哪里？
+
+### 29.段页式映射机制具体工作方式
+
+### 30.反向页表映射机制的实现？
+
+### 31.CPU如何读写设备控制器的寄存器？
+
+### 32.异步I/O模式是否能很好处理所有I/O情况
+
+### 33.RDMA 和 Infiniband
+
+### 34.硬连接和符号链接(hard link and symbol link)
+
+### 35.如何更好地设计文件系统？处理好挑战  -> 高性能，普适性，持久性，可靠性
+
+### 36.bitmap ? 实现空闲地址映射
+
 ### 37. linux文件系统
 
 #### Linux 的一切皆文件
@@ -358,4 +1722,5 @@ Linux 中的各种事物比如像文档、目录（Mac OS X 和 Windows 系统�
 
 [linux文件系统](https://juejin.im/post/5b8ba9e26fb9a019c372e100)
 
-### 
+### 38.管程和信号量概念理解，尤其是管程！
+
