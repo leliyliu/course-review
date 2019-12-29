@@ -1299,6 +1299,34 @@ switch (sock->state) {
 
 ![第一次握手](fig/socket2.png)
 
+![任务1](fig/socket6.png)
+
+任务2即是发送SYN报文
+
+##### 第二次握手
+
+![第二次握手](fig/socket7.png)
+
+实际上即是根据SYN的到来，更新sk状态，然后发送SYN-ACK包进行第二次握手
+
+##### 第三次握手
+
+![第三次](fig/socket8.png)
+
+##### 总结
+
+![socket](fig/socket9.png)
+
+#### write函数
+
+![write](fig/socket10.png)
+
+#### read函数
+
+![read](fig/socket11.png)
+
+
+
 ## 同步互斥与信号量
 
 ### 临界区
