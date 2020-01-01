@@ -1349,3 +1349,39 @@ UDP报文段结构，主要包括这样几个部分：源端口号，目的端�
 
 故而，实际上UDP报文段的校验和计算非常简单
 
+#### TCP
+
+##### 估计往返时间
+
+其公式为：
+
+$$EstimatedRTT = (1-\alpha) \times EstimatedRTT +\alpha \times SampleRTT$$
+
+定义RTT偏差DevRTT，其估算了SampleRTT一般会偏离EsttimmatedRTT 的距离
+
+$$DevRTT = (1-\beta) \times DevRTT + \beta \times (|SampleRTT-EstimatedRTT|)$$
+
+那么根据之前的设定，设置的超时重传的时间应该为：
+
+$$TimoutInterval = EstimatedRTT + 4 \times DevRTT$$
+
+##### 超时间隔加倍
+
+当每次重传的时候，会设置timer为之前的两倍，而不是利用timeoutInterval进行计算
+
+
+
+##### 快速重传
+
+快速重传机制，实际上是当收到冗余ACK的时候，进行重传，一般是收到三次冗余ACK
+
+##### 流量控制
+
+定义这样两个公式：
+
+$$LastByteRcvd - LastByteRead \le RcvBuffer$$
+
+$$rwnd = RcvBuffer - [LastByteRcvd - LastByteRead]$$
+
+TCP规范中规定：当主机B 的接收窗口为0时，主机A将继续发送只有一个字节数据的报文段。
+
