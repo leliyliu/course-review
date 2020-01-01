@@ -537,8 +537,6 @@ outportb(data_port,data);
 
 ![端口安排](fig/4-22.png)
 
-
-
 #### 8253的控制字及初始化
 
 对于8253的控制字
@@ -556,8 +554,6 @@ outp(port_CMD,0x30);
 outp(port_A,0x00);
 outp(port_A,0x00);
 ```
-
-
 
 #### 8253的工作方式
 
@@ -648,8 +644,6 @@ outp(port_A,0x00);
 一个总的总线参考图
 
 ![总线](fig/5-5.png)
-
-
 
 ### ISA总线
 
